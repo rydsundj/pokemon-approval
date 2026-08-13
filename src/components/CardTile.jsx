@@ -7,6 +7,17 @@ import { formatSek, formatRelativeSv } from '../lib/format';
 export default function CardTile({ card, currentUser, now, onApprove, onDeny }) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [imgIdx, setImgIdx] = useState(0);
+
+  const images =
+    card.image_urls && card.image_urls.length > 0
+      ? card.image_urls
+      : card.image_url
+        ? [card.image_url]
+        : [];
+  const idx = images.length ? Math.min(imgIdx, images.length - 1) : 0;
+  const go = (delta) =>
+    setImgIdx((i) => (i + delta + images.length) % images.length);
 
   const isSubmitter = card.submitted_by === currentUser;
   const isPending = card.status === 'pending';
@@ -38,33 +49,64 @@ export default function CardTile({ card, currentUser, now, onApprove, onDeny }) 
     <div
       className={`group flex flex-col overflow-hidden rounded-2xl border bg-ink-800/80 shadow-card transition duration-200 hover:-translate-y-0.5 hover:shadow-lift ${shell}`}
     >
-      {/* Image */}
-      <div className="relative aspect-[4/3] w-full overflow-hidden bg-ink-700">
-        {card.image_url ? (
+      {/* Image gallery */}
+      <div className="relative aspect-[4/3] w-full overflow-hidden bg-ink-900">
+        {images.length > 0 ? (
           <img
-            src={card.image_url}
-            alt={card.name}
+            key={images[idx]}
+            src={images[idx]}
+            alt={`${card.name} (bild ${idx + 1})`}
             loading="lazy"
-            className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
-            onError={(e) => {
-              e.currentTarget.style.display = 'none';
-              e.currentTarget.nextSibling.style.display = 'flex';
-            }}
+            className="h-full w-full object-contain"
           />
-        ) : null}
-        <div
-          className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-ink-700 to-ink-800"
-          style={{ display: card.image_url ? 'none' : 'flex' }}
-        >
-          <svg viewBox="0 0 64 64" className="h-14 w-14 opacity-30">
-            <circle cx="32" cy="32" r="26" fill="none" stroke="#e0a94b" strokeWidth="3" />
-            <path d="M6 32h52" stroke="#e0a94b" strokeWidth="3" />
-            <circle cx="32" cy="32" r="8" fill="#14110c" stroke="#e0a94b" strokeWidth="3" />
-          </svg>
-        </div>
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-ink-700 to-ink-800">
+            <svg viewBox="0 0 64 64" className="h-14 w-14 opacity-30">
+              <circle cx="32" cy="32" r="26" fill="none" stroke="#e0a94b" strokeWidth="3" />
+              <path d="M6 32h52" stroke="#e0a94b" strokeWidth="3" />
+              <circle cx="32" cy="32" r="8" fill="#14110c" stroke="#e0a94b" strokeWidth="3" />
+            </svg>
+          </div>
+        )}
+
         <div className="absolute left-2.5 top-2.5">
           <StatusBadge status={card.status} reason={reasonText} />
         </div>
+
+        {images.length > 1 && (
+          <>
+            <button
+              type="button"
+              onClick={() => go(-1)}
+              aria-label="Föregående bild"
+              className="absolute left-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-cream backdrop-blur-sm transition hover:bg-black/80"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6" /></svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => go(1)}
+              aria-label="Nästa bild"
+              className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-cream backdrop-blur-sm transition hover:bg-black/80"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
+            </button>
+            <div className="absolute right-2.5 top-2.5 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-cream">
+              {idx + 1}/{images.length}
+            </div>
+            <div className="absolute bottom-2 left-1/2 flex -translate-x-1/2 gap-1.5">
+              {images.map((url, i) => (
+                <button
+                  key={url}
+                  type="button"
+                  onClick={() => setImgIdx(i)}
+                  aria-label={`Visa bild ${i + 1}`}
+                  className={`h-1.5 rounded-full transition-all ${i === idx ? 'w-4 bg-gold' : 'w-1.5 bg-cream/50 hover:bg-cream/80'}`}
+                />
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       <div className="flex flex-1 flex-col gap-3 p-4">

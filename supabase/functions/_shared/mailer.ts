@@ -7,6 +7,7 @@ export interface Card {
   name: string;
   tradera_url: string;
   image_url: string | null;
+  image_urls: string[] | null;
   max_bid: number;
   estimated_value: number;
   near_mint_value: number;
@@ -109,9 +110,31 @@ export function detailLine(label: string, value: string): string {
   return `<div style="margin:4px 0;font-size:14px;color:${CREAM};"><span style="color:#8b8172;">${escapeHtml(label)}:</span> ${value}</div>`;
 }
 
+// Returns every image on the card (falls back to the single image_url).
+function imageList(card: Card): string[] {
+  if (card.image_urls && card.image_urls.length > 0) return card.image_urls;
+  return card.image_url ? [card.image_url] : [];
+}
+
+function imgTag(src: string, alt: string): string {
+  return `<img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" width="100%" style="display:block;width:100%;max-height:360px;object-fit:contain;background:#0f0d09;border-radius:12px;border:1px solid #2c251b;margin:2px 0 10px;">`;
+}
+
+// Single (main) image — used in the decision e-mail.
 export function cardImage(card: Card): string {
-  if (!card.image_url) return '';
-  return `<img src="${escapeHtml(card.image_url)}" alt="${escapeHtml(card.name)}" width="100%" style="display:block;width:100%;max-height:320px;object-fit:cover;border-radius:12px;border:1px solid #2c251b;margin:2px 0 10px;">`;
+  const imgs = imageList(card);
+  return imgs.length ? imgTag(imgs[0], card.name) : '';
+}
+
+// All images stacked — used in the review e-mail (front, back, details).
+export function cardImages(card: Card): string {
+  const imgs = imageList(card).slice(0, 8);
+  if (imgs.length === 0) return '';
+  const count =
+    imgs.length > 1
+      ? `<div style="font-size:12px;color:#8b8172;margin:0 0 6px;">${imgs.length} bilder från annonsen</div>`
+      : '';
+  return count + imgs.map((src, i) => imgTag(src, `${card.name} (bild ${i + 1})`)).join('');
 }
 
 export function auctionEndLine(card: Card): string {

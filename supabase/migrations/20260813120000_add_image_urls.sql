@@ -1,0 +1,1 @@
+alter table public.cards add column if not exists image_urls text[];

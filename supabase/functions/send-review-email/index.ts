@@ -12,7 +12,7 @@ import {
   ctaButton,
   priceRow,
   detailLine,
-  cardImage,
+  cardImages,
   auctionEndLine,
   escapeHtml,
 } from '../_shared/mailer.ts';
@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
       <div style="font-size:14px;color:#a1968a;margin:6px 0 16px;">
         ${escapeHtml(card.submitted_by)} vill bjuda på <strong style="color:#efe9dd;">${escapeHtml(card.name)}</strong> och behöver ditt godkännande.
       </div>
-      ${cardImage(card)}
+      ${cardImages(card)}
       ${priceRow(card)}
       <div style="margin-top:12px;">
         ${auctionEndLine(card)}

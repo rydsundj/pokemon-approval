@@ -1,9 +1,12 @@
 // ============================================================
 //  scrape-image
 //  Tar emot en Tradera-URL, hämtar HTML på serversidan (undviker
-//  CORS) och plockar ut en bild-URL: og:image först, annars
-//  twitter:image / link[image_src], annars första rimliga <img>.
-//  Returnerar { imageUrl: string | null }.
+//  CORS) och plockar ut ALLA foton i annonsen (fram, bak, detaljer).
+//  Traderas bilder ligger på img.tradera.net som
+//    .../{storlek}/{grupp}/{annons-id}_{uuid}.jpg
+//  Samma foto finns i flera storlekar → vi avduplicerar på filnamnet
+//  och normaliserar till "large-fit" (bra visningsstorlek).
+//  Returnerar { imageUrls: string[], imageUrl: string | null }.
 // ============================================================
 import { handlePreflight, json } from '../_shared/cors.ts';
 
@@ -41,38 +44,62 @@ Deno.serve(async (req) => {
     });
 
     if (!res.ok) {
-      return json({ imageUrl: null, error: `Sidan svarade ${res.status}.` }, 200);
+      return json({ imageUrls: [], imageUrl: null, error: `Sidan svarade ${res.status}.` }, 200);
     }
 
     const html = await res.text();
-    const imageUrl = extractImage(html, url);
-    return json({ imageUrl });
+    const imageUrls = extractImages(html, url);
+    return json({ imageUrls, imageUrl: imageUrls[0] ?? null });
   } catch (err) {
-    return json({ imageUrl: null, error: `Kunde inte hämta sidan: ${String(err)}` }, 200);
+    return json({ imageUrls: [], imageUrl: null, error: `Kunde inte hämta sidan: ${String(err)}` }, 200);
   }
 });
 
-function extractImage(html: string, pageUrl: string): string | null {
-  // 1. og:image (attributordning kan variera).
-  const og =
+const MAX_IMAGES = 12;
+
+function extractImages(html: string, pageUrl: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  // 1. Traderas egna foton (i annonsens ordning: fram, bak, detaljer …).
+  const re =
+    /img\.tradera\.net\/[a-z0-9-]+\/(\d+)\/([A-Za-z0-9._-]+\.(?:jpe?g|png|webp))/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const group = m[1];
+    const file = m[2];
+    if (seen.has(file)) continue; // dedupe på filnamn (id_uuid)
+    seen.add(file);
+    out.push(`https://img.tradera.net/large-fit/${group}/${file}`);
+    if (out.length >= MAX_IMAGES) break;
+  }
+  if (out.length > 0) return out;
+
+  // 2. Fallback för andra sidor: og:image → twitter:image → första <img>.
+  const single =
     metaContent(html, 'property', 'og:image') ??
     metaContent(html, 'name', 'og:image') ??
-    metaContent(html, 'property', 'og:image:secure_url');
-  if (og) return absolutize(og, pageUrl);
-
-  // 2. twitter:image
-  const tw =
+    metaContent(html, 'property', 'og:image:secure_url') ??
     metaContent(html, 'name', 'twitter:image') ??
-    metaContent(html, 'property', 'twitter:image');
-  if (tw) return absolutize(tw, pageUrl);
+    firstImg(html);
+  return single ? [absolutize(single, pageUrl)] : [];
+}
 
-  // 3. <link rel="image_src">
-  const linkMatch = html.match(
-    /<link[^>]+rel=["']image_src["'][^>]*href=["']([^"']+)["']/i,
-  );
-  if (linkMatch) return absolutize(linkMatch[1], pageUrl);
+// Läser <meta ATTR="KEY" content="...">, oavsett attributordning.
+function metaContent(html: string, attr: string, key: string): string | null {
+  const esc = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const patterns = [
+    new RegExp(`<meta[^>]+${attr}=["']${esc}["'][^>]*content=["']([^"']+)["']`, 'i'),
+    new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]*${attr}=["']${esc}["']`, 'i'),
+  ];
+  for (const rx of patterns) {
+    const match = html.match(rx);
+    if (match) return decodeEntities(match[1]);
+  }
+  return null;
+}
 
-  // 4. Första rimliga <img> — hoppa över ikoner/sprites/pixlar.
+function firstImg(html: string): string | null {
   const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
   let m: RegExpExecArray | null;
   while ((m = imgRegex.exec(html)) !== null) {
@@ -80,28 +107,7 @@ function extractImage(html: string, pageUrl: string): string | null {
     if (/\.svg(\?|$)/i.test(src)) continue;
     if (/sprite|icon|logo|placeholder|blank|pixel|1x1/i.test(src)) continue;
     if (/^data:/i.test(src)) continue;
-    return absolutize(src, pageUrl);
-  }
-
-  return null;
-}
-
-// Läser <meta ATTR="KEY" content="...">, oavsett attributordning.
-function metaContent(html: string, attr: string, key: string): string | null {
-  const esc = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const patterns = [
-    new RegExp(
-      `<meta[^>]+${attr}=["']${esc}["'][^>]*content=["']([^"']+)["']`,
-      'i',
-    ),
-    new RegExp(
-      `<meta[^>]+content=["']([^"']+)["'][^>]*${attr}=["']${esc}["']`,
-      'i',
-    ),
-  ];
-  for (const re of patterns) {
-    const match = html.match(re);
-    if (match) return decodeEntities(match[1]);
+    return src;
   }
   return null;
 }

@@ -35,13 +35,16 @@ export async function fetchCards() {
   return data ?? [];
 }
 
-// Scrapes the Tradera image via the Edge Function. Returns null on failure.
-export async function scrapeImage(url) {
+// Scrapes ALL images from the Tradera listing via the Edge Function.
+// Returns an array of image URLs (empty on failure).
+export async function scrapeImages(url) {
   const { data, error } = await supabase.functions.invoke('scrape-image', {
     body: { url },
   });
   if (error) throw error;
-  return data?.imageUrl ?? null;
+  if (Array.isArray(data?.imageUrls)) return data.imageUrls;
+  // Bakåtkompatibelt om funktionen ännu returnerar en enskild bild.
+  return data?.imageUrl ? [data.imageUrl] : [];
 }
 
 export async function createCard(card) {

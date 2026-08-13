@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import Modal from './Modal';
-import { createCard, scrapeImage } from '../lib/api';
+import { createCard, scrapeImages } from '../lib/api';
 import { useToast } from '../lib/toast';
 
-// Form for adding a new card. Scrapes the Tradera image on URL blur,
-// with a manual image-URL paste as fallback.
+// Form for adding a new card. Scrapes ALL images from the Tradera listing
+// on URL blur (front, back, details), with manual paste as fallback.
 export default function AddCardModal({ currentUser, onClose, onCreated }) {
   const notify = useToast();
 
@@ -17,9 +17,9 @@ export default function AddCardModal({ currentUser, onClose, onCreated }) {
     auction_ends_at: '',
     comment: '',
   });
-  const [imageUrl, setImageUrl] = useState('');
+  const [images, setImages] = useState([]); // string[]
+  const [manualUrl, setManualUrl] = useState('');
   const [scrape, setScrape] = useState('idle'); // idle | loading | done | failed
-  const [showManual, setShowManual] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
 
@@ -30,20 +30,28 @@ export default function AddCardModal({ currentUser, onClose, onCreated }) {
     if (!/^https?:\/\//i.test(url)) return;
     setScrape('loading');
     try {
-      const found = await scrapeImage(url);
-      if (found) {
-        setImageUrl(found);
+      const found = await scrapeImages(url);
+      if (found.length > 0) {
+        // Behåll eventuella manuellt tillagda bilder överst, lägg till nya unika.
+        setImages((prev) => uniq([...prev, ...found]));
         setScrape('done');
-        setShowManual(false);
       } else {
         setScrape('failed');
-        setShowManual(true);
       }
     } catch {
       setScrape('failed');
-      setShowManual(true);
     }
   };
+
+  const addManual = () => {
+    const u = manualUrl.trim();
+    if (!/^https?:\/\//i.test(u)) return;
+    setImages((prev) => uniq([...prev, u]));
+    setManualUrl('');
+    setScrape('done');
+  };
+
+  const removeImage = (url) => setImages((prev) => prev.filter((u) => u !== url));
 
   const validate = () => {
     const e = {};
@@ -72,7 +80,8 @@ export default function AddCardModal({ currentUser, onClose, onCreated }) {
     const payload = {
       name: form.name.trim(),
       tradera_url: form.tradera_url.trim(),
-      image_url: imageUrl.trim() || null,
+      image_url: images[0] ?? null,
+      image_urls: images.length > 0 ? images : null,
       max_bid: Math.round(Number(form.max_bid)),
       estimated_value: Math.round(Number(form.estimated_value)),
       near_mint_value: Math.round(Number(form.near_mint_value)),
@@ -126,16 +135,13 @@ export default function AddCardModal({ currentUser, onClose, onCreated }) {
           />
         </Field>
 
-        {/* Image preview / status */}
-        <ImagePreview
+        <ImageGallery
+          images={images}
           scrape={scrape}
-          imageUrl={imageUrl}
-          showManual={showManual}
-          onToggleManual={() => setShowManual((v) => !v)}
-          onManualChange={(v) => {
-            setImageUrl(v);
-            if (v) setScrape('done');
-          }}
+          manualUrl={manualUrl}
+          onManualChange={setManualUrl}
+          onAddManual={addManual}
+          onRemove={removeImage}
         />
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -181,6 +187,10 @@ export default function AddCardModal({ currentUser, onClose, onCreated }) {
   );
 }
 
+function uniq(arr) {
+  return Array.from(new Set(arr));
+}
+
 function Field({ label, error, children }) {
   return (
     <div>
@@ -191,47 +201,73 @@ function Field({ label, error, children }) {
   );
 }
 
-function ImagePreview({ scrape, imageUrl, showManual, onToggleManual, onManualChange }) {
+function ImageGallery({ images, scrape, manualUrl, onManualChange, onAddManual, onRemove }) {
   return (
     <div>
       <div className="flex items-center justify-between">
-        <span className="field-label mb-0">Bild</span>
-        <button
-          type="button"
-          onClick={onToggleManual}
-          className="text-xs font-medium text-gold transition hover:text-gold-soft"
-        >
-          {showManual ? 'Dölj manuell inmatning' : 'Klistra in bild-URL manuellt'}
-        </button>
-      </div>
-
-      <div className="mt-1.5 overflow-hidden rounded-xl border border-ink-500/60 bg-ink-900/40">
-        {scrape === 'loading' ? (
-          <div className="flex items-center gap-3 px-4 py-6 text-sm text-stone">
-            <Spinner /> Hämtar bild från Tradera…
-          </div>
-        ) : imageUrl ? (
-          <img src={imageUrl} alt="Förhandsvisning" className="max-h-56 w-full object-contain bg-ink-900" />
-        ) : scrape === 'failed' ? (
-          <div className="px-4 py-5 text-sm text-stone">
-            Kunde inte hämta bilden automatiskt. Klistra in en bild-URL nedan.
-          </div>
-        ) : (
-          <div className="px-4 py-5 text-sm text-stone/70">
-            Bilden hämtas automatiskt när du klistrat in Tradera-länken.
-          </div>
+        <span className="field-label mb-0">
+          Bilder{images.length > 0 ? ` (${images.length})` : ''}
+        </span>
+        {scrape === 'loading' && (
+          <span className="inline-flex items-center gap-2 text-xs text-stone">
+            <Spinner /> Hämtar bilder från Tradera…
+          </span>
         )}
       </div>
 
-      {showManual && (
-        <input
-          className="field-input mt-2"
-          type="url"
-          value={imageUrl}
-          onChange={(e) => onManualChange(e.target.value)}
-          placeholder="https://…/bild.jpg"
-        />
+      {images.length > 0 ? (
+        <div className="mt-1.5 grid grid-cols-3 gap-2 sm:grid-cols-4">
+          {images.map((url, i) => (
+            <div
+              key={url}
+              className="group relative aspect-square overflow-hidden rounded-lg border border-ink-500/60 bg-ink-900"
+            >
+              <img src={url} alt={`Bild ${i + 1}`} className="h-full w-full object-contain" />
+              {i === 0 && (
+                <span className="absolute left-1 top-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold text-gold">
+                  Huvudbild
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => onRemove(url)}
+                aria-label="Ta bort bild"
+                className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-cream opacity-0 transition group-hover:opacity-100 hover:bg-deny"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-1.5 rounded-xl border border-ink-500/60 bg-ink-900/40 px-4 py-5 text-sm text-stone/70">
+          {scrape === 'failed'
+            ? 'Kunde inte hämta bilderna automatiskt. Klistra in en bild-URL nedan.'
+            : 'Bilderna hämtas automatiskt när du klistrat in Tradera-länken.'}
+        </div>
       )}
+
+      {/* Manuell tillägg (fungerar alltid som komplement/fallback) */}
+      <div className="mt-2 flex gap-2">
+        <input
+          className="field-input"
+          type="url"
+          value={manualUrl}
+          onChange={(e) => onManualChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              onAddManual();
+            }
+          }}
+          placeholder="Klistra in extra bild-URL…"
+        />
+        <button type="button" onClick={onAddManual} className="btn-ghost whitespace-nowrap px-3">
+          Lägg till
+        </button>
+      </div>
     </div>
   );
 }

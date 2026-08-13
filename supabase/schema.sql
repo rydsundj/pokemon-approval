@@ -11,7 +11,8 @@ create table if not exists public.cards (
   id                        uuid primary key default gen_random_uuid(),
   name                      text        not null,
   tradera_url               text        not null,
-  image_url                 text,
+  image_url                 text,               -- första/huvudbilden (för mejl m.m.)
+  image_urls                text[],             -- alla foton från annonsen
   max_bid                   integer     not null,
   estimated_value           integer     not null,
   near_mint_value           integer     not null,
@@ -26,6 +27,9 @@ create table if not exists public.cards (
   decided_by                text,
   decided_at                timestamptz
 );
+
+-- Lägg till flerbilds-kolumnen om tabellen redan finns sedan tidigare.
+alter table public.cards add column if not exists image_urls text[];
 
 -- Snabbare sortering på slut-tid och status.
 create index if not exists cards_status_idx        on public.cards (status);
