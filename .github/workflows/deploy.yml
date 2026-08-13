@@ -1,0 +1,60 @@
+name: Bygg och distribuera till GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {} # låter dig köra bygget manuellt från fliken "Actions"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Kör bara en distribution i taget.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hämta koden
+        uses: actions/checkout@v5
+
+      - name: Installera Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Installera beroenden
+        run: npm install
+
+      - name: Bygg webbappen
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_SHARED_PASSWORD: ${{ secrets.VITE_SHARED_PASSWORD }}
+          VITE_USER_NAME_1: ${{ vars.VITE_USER_NAME_1 }}
+          VITE_USER_NAME_2: ${{ vars.VITE_USER_NAME_2 }}
+          # Sätts automatiskt till /<repo-namn>/. Skapa repo-variabeln
+          # VITE_BASE_PATH och sätt den till "/" om du använder eget domännamn.
+          VITE_BASE_PATH: ${{ vars.VITE_BASE_PATH || format('/{0}/', github.event.repository.name) }}
+        run: npm run build
+
+      - name: Ladda upp bygget
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Distribuera till GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

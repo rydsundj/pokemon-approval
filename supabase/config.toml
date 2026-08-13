@@ -1,0 +1,5 @@
+# Minimal Supabase CLI config so `supabase link` and
+# `supabase functions deploy` work from this folder.
+# The project_id is just a local label; `supabase link --project-ref <ref>`
+# connects it to your real project.
+project_id = "pokemon-approval"
